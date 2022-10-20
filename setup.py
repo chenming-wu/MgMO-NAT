@@ -40,9 +40,9 @@ def write_version_py():
 version = write_version_py()
 
 
-with open("README.md") as f:
-    readme = f.read()
-
+#with open("README.md") as f:
+#    readme = f.read()
+readme = ""
 
 if sys.platform == "darwin":
     extra_compile_args = ["-stdlib=libc++", "-O3"]

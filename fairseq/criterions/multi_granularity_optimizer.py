@@ -64,7 +64,7 @@ class NatMGMOTrainingCriterion(LabelSmoothedDualImitationCriterion):
         )
         parser.add_argument(
             "--reward-method",
-            default="gleu",
+            default="bleu1",
             type=str,
             help="method, e.g., gleu or bleu score"
         )
@@ -254,7 +254,6 @@ class NatMGMOTrainingCriterion(LabelSmoothedDualImitationCriterion):
         3) logging outputs to display while training
         """
         nsentences, ntokens = sample["nsentences"], sample["ntokens"]
-
         # B x T
         src_tokens, src_lengths = (
             sample["net_input"]["src_tokens"],
@@ -269,8 +268,8 @@ class NatMGMOTrainingCriterion(LabelSmoothedDualImitationCriterion):
 
         # taking sampling process
         outputs = model.sample(src_tokens, src_lengths, prev_output_tokens, tgt_tokens, self.n_sample, with_forward=self.with_forward, temperature=self.temperature, glat=glat, null_input=self.null_input, rm_scale=self.rm_scale)
+        
         y_indice, log_token_prob = model.sample_logits(outputs['word_ins']['out'], greedy=self.greedy)
-
 
         prev_output_tokens_mask = outputs['word_ins']['mask']
         if 'pad_mask' in outputs['word_ins']:
@@ -280,11 +279,30 @@ class NatMGMOTrainingCriterion(LabelSmoothedDualImitationCriterion):
         else:
             pad_mask = prev_output_tokens_mask
 
-
         # calculate risk
-        risks = self.get_risk(y_indice, tgt_tokens.repeat_interleave(self.n_sample,0), mask=prev_output_tokens_mask, pad_mask=pad_mask)
+        risks = self.get_risk(y_indice, tgt_tokens.repeat_interleave(self.n_sample,0), mask=prev_output_tokens_mask, pad_mask=pad_mask)  # COMET
         risks = risks.view(-1,self.n_sample)
+        
+        scores = outputs['word_ins']['pred_scores']
+        y_pred = scores.view(-1, self.n_sample)
+        
+        y_rel_gt = ((risks.unsqueeze(-1) - risks.unsqueeze(-1).transpose(2, 1)) > 0).float()
+        y_rel_pred = y_pred.unsqueeze(-1) - y_pred.unsqueeze(-1).transpose(2,1)
 
+        loss_pairwise = torch.nn.functional.binary_cross_entropy(torch.sigmoid(y_rel_pred), y_rel_gt)
+
+        """    
+        with torch.no_grad():
+            rel_diff_tensor = risks - risks.t()
+            zero = torch.tensor(0, device=scores.device)
+            sigma = 1.0
+            l_pos = 1 + torch.exp(sigma * (y_pred - y_pred.t()))
+            l_neg = 1 + torch.exp(- sigma * (y_pred - y_pred.t()))
+            lambda_y = torch.where(rel_diff_tensor > 0, -sigma / l_pos, zero) + torch.where(
+                rel_diff_tensor < 0, sigma / l_neg, zero)
+            back = torch.sum(lambda_y, dim=1, keepdim=True)
+        y_pred.backward(grad / pairs)
+        """
 
         # renormalize by Q-ditribution (default)
         log_length_prob = outputs['length']['log_length_prob']
@@ -302,7 +320,8 @@ class NatMGMOTrainingCriterion(LabelSmoothedDualImitationCriterion):
         sent_prob = (log_sent_prob).exp()
         # normalize in sample space
         sent_prob = sent_prob / torch.sum(sent_prob, -1, keepdim=True)
-        avg_risk = torch.sum(risks * sent_prob, dim=-1)
+        # avg_risk = torch.sum(risks * sent_prob, dim=-1)
+        avg_risk = torch.sum(y_pred * sent_prob, dim=-1)
         batch_loss = torch.sum(avg_risk)
         
 
@@ -310,7 +329,7 @@ class NatMGMOTrainingCriterion(LabelSmoothedDualImitationCriterion):
         # |y_indice| = (B, T)
         # |tgt_tokens| = (B, T)
         # |actor_reward| = (B)
-        outputs['word_ins']['loss'] = batch_loss
+        outputs['word_ins']['loss'] = batch_loss + loss_pairwise
         outputs['word_ins']['factor'] = self.reward_factor
         outputs['word_ins']['nll_loss'] = False
         # ignore length loss temporarily
@@ -325,7 +344,6 @@ class NatMGMOTrainingCriterion(LabelSmoothedDualImitationCriterion):
 
 
         losses, nll_loss = [], []
-
         for obj in outputs:
             if obj.startswith('glat'):
                 continue
@@ -381,7 +399,7 @@ class NatMGMOTrainingCriterion(LabelSmoothedDualImitationCriterion):
                 if reduce
                 else l[["loss"]].data / l["factor"]
             )
-
+        print("forward done")
         return loss, sample_size, logging_output
 
     def _custom_loss(self, loss, name="loss", factor=1.0):

@@ -15,7 +15,7 @@ from fairseq import utils
 from fairseq.iterative_refinement_generator import DecoderOut
 from fairseq.models import register_model, register_model_architecture
 from fairseq.models.nat import FairseqNATSharedDecoder, FairseqNATModel, ensemble_decoder
-from fairseq.models.transformer import Embedding
+from fairseq.models.transformer import Embedding, Linear
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 import numpy as np
 from fairseq.data.dictionary import BOS, PAD, EOS, UNK
@@ -195,7 +195,6 @@ class NATransformerModel(FairseqNATModel):
         #         "normalize": normalize,
         #     }
 
-        
         ## Sampling
         # length sampling 
         sampled_length_tgt, log_length_prob, golden_length_tgt  = self.decoder.forward_length_prediction(
@@ -429,14 +428,29 @@ class NATransformerDecoder(FairseqNATSharedDecoder):
         self.embed_length = Embedding(256, self.encoder_embed_dim, None)
 
         self.max_length_bias = getattr(args, "max_length_bias", 10)
+        self.embed_score_layer_0 = Embedding(256, self.encoder_embed_dim, None)
+        self.embed_score_layer_1 = Embedding(1, 256, None)
+
 
     @ensemble_decoder
     def forward(self, normalize, encoder_out, prev_output_tokens, step=0, temperature=1, **unused):
+        # print("prev_output_tokens", prev_output_tokens)
         features, _ = self.extract_features(
             prev_output_tokens,
             encoder_out=encoder_out,
             embedding_copy=(step == 0) & self.src_embedding_copy,
         )
+
+        # len_tokens = self.embed_lengths(src_tokens.new(src_tokens.size(0), 1).fill_(0))
+        # x = torch.cat([len_tokens, x], dim=1)
+
+        dec_feats = _mean_pooling(features.transpose(1, 0), prev_output_tokens==1) # B x C
+        self.pred_scores = F.linear(
+            F.tanh(
+                F.linear(dec_feats, self.embed_score_layer_0.weight)
+                ),
+            self.embed_score_layer_1.weight)
+
         decoder_out = self.output_layer(features)
         # divide by temperature before softmax
         decoder_out = decoder_out / temperature

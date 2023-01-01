@@ -130,7 +130,7 @@ class CMLMNATransformerModel(NATransformerModel):
         self, src_tokens, src_lengths, prev_output_tokens, tgt_tokens, n_sample=1, normalize=True, train_ratio=None, with_forward=False, temperature=1, glat=None, greedy=False, null_input=False, rm_scale=1.0, **kwargs
     ):
         outputs = {}
-
+        
         # encoding
         encoder_out = self.encoder(src_tokens, src_lengths=src_lengths, **kwargs)
         length_out = self.decoder.forward_length(
@@ -160,7 +160,7 @@ class CMLMNATransformerModel(NATransformerModel):
             return prev_target_tokens
 
 
-
+    
         ## Sampling
         # length sampling 
         sampled_length_tgt, log_length_prob, golden_length_tgt = self.decoder.forward_length_prediction(
@@ -213,7 +213,6 @@ class CMLMNATransformerModel(NATransformerModel):
         encoder_out['encoder_padding_mask'] = [encoder_out['encoder_padding_mask'][0].repeat_interleave(n_sample,0)]
 
 
-        
         # decoding
         word_ins_out = self.decoder(
             normalize=normalize,
@@ -221,7 +220,8 @@ class CMLMNATransformerModel(NATransformerModel):
             encoder_out=encoder_out,
             temperature=temperature,
         )
-        
+        pred_scores = self.decoder.pred_scores
+
 
         outputs["word_ins"] = {
                 "out": word_ins_out,
@@ -231,6 +231,7 @@ class CMLMNATransformerModel(NATransformerModel):
                 "ls": self.args.label_smoothing,    
                 "nll_loss": True,
                 "normalize": normalize,
+                "pred_scores": pred_scores
             }
         outputs["length"] = {
                 "out": length_out,

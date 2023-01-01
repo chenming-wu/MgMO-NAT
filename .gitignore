@@ -3,3 +3,6 @@
 /data/
 /shell/
 /analysis/
+
+*.so
+/mgmo

@@ -1,7 +1,8 @@
 export PYTHONPATH=""
 RUN="/home/jast/MgMO-NAT"
-MODEL="mgmo"
-RESTORE="/mnt/d/datasets/cmlm_deen_bsz128k.pt"
+MODEL="mgmo/test1"
+# RESTORE="/mnt/d/datasets/cmlm_deen_bsz128k.pt"
+RESTORE="/home/jast/MgMO-NAT/mgmo/test0/checkpoint_1_11700.pt"
 DATA="/mnt/d/datasets/wmt14.de-en_kd"
 mkdir -p $MODEL
 

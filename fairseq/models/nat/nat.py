@@ -444,7 +444,7 @@ class NATransformerDecoder(FairseqNATSharedDecoder):
         # len_tokens = self.embed_lengths(src_tokens.new(src_tokens.size(0), 1).fill_(0))
         # x = torch.cat([len_tokens, x], dim=1)
 
-        dec_feats = _mean_pooling(features.transpose(1, 0), prev_output_tokens==1) # B x C
+        dec_feats = _mean_pooling(features.transpose(1, 0), prev_output_tokens==1).detach() # B x C
         self.pred_scores = F.linear(
             F.tanh(
                 F.linear(dec_feats, self.embed_score_layer_0.weight)

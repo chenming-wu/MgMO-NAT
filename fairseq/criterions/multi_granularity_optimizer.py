@@ -288,9 +288,8 @@ class NatMGMOTrainingCriterion(LabelSmoothedDualImitationCriterion):
         
         y_rel_gt = ((risks.unsqueeze(-1) - risks.unsqueeze(-1).transpose(2, 1)) > 0).float()
         y_rel_pred = y_pred.unsqueeze(-1) - y_pred.unsqueeze(-1).transpose(2,1)
-
-        loss_pairwise = torch.nn.functional.binary_cross_entropy(torch.sigmoid(y_rel_pred), y_rel_gt)
-
+        loss_pairwise = torch.nn.functional.binary_cross_entropy(torch.sigmoid(y_rel_pred), y_rel_gt, weight = 1.-torch.eye(y_rel_pred.shape[1], y_rel_pred.shape[2]).to(y_rel_gt.device).repeat((y_rel_pred.shape[0], 1, 1)))
+        print("loss_pairwise: ", loss_pairwise)
         """    
         with torch.no_grad():
             rel_diff_tensor = risks - risks.t()
@@ -321,7 +320,7 @@ class NatMGMOTrainingCriterion(LabelSmoothedDualImitationCriterion):
         # normalize in sample space
         sent_prob = sent_prob / torch.sum(sent_prob, -1, keepdim=True)
         # avg_risk = torch.sum(risks * sent_prob, dim=-1)
-        avg_risk = torch.sum(y_pred * sent_prob, dim=-1)
+        avg_risk = torch.sum(y_pred.detach() * sent_prob, dim=-1)
         batch_loss = torch.sum(avg_risk)
         
 
